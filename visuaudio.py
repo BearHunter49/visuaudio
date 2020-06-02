@@ -7,6 +7,8 @@ from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
 import pyaudio
 from scipy.fftpack import fft
+from pynput.keyboard import Listener, Key
+
 
 
 class AudioStream:
@@ -16,13 +18,11 @@ class AudioStream:
     def __init__(self, num):
         self.traces = set()
         self.number = num
-
         # pyaudio setup
         self.FORMAT = pyaudio.paInt16  # bytes / sample
         self.CHANNELS = 1  # mono sound
         self.RATE = 44100  # samples / sec (44.1 kHz)
         self.CHUNK = 1024  # how much audio processed / frame -- set smaller for higher frame rate
-
         self.p = pyaudio.PyAudio()
         self.stream = self.p.open(
             format=self.FORMAT,
@@ -34,7 +34,7 @@ class AudioStream:
         )
         # spectrum x points
         self.f = np.linspace(1, int(self.RATE / 2), 64)
-
+        self.f2=np.frombuffer(self.stream.read(self.CHUNK),dtype=np.int16)
         # pyqtgraph setup
         pg.setConfigOptions(antialias=True)
         self.app = QtGui.QApplication(sys.argv)
@@ -47,8 +47,16 @@ class AudioStream:
         self.audio_plot.showGrid(x=True, y=True)
         self.audio_plot.hideAxis("bottom")
         self.audio_plot.hideAxis("left")
+
+        # make dictionary "a" to set color setting in curve graph
+        self.a = {
+            'pen': 'w',
+            'shadowPen': 'r',
+        }
+
         # graph init
         self.graph = None
+
 
     @staticmethod
     def set_gradient_brush():
@@ -103,14 +111,20 @@ class AudioStream:
         if name in self.traces:
             # update curve plot content
             self.graph.clear()
-            self.graph.setData(data_x, data_y)
+            self.graph = pg.PlotCurveItem(
+                x=data_x, y=data_y, pen=self.a['pen'], shadowPen=self.a['shadowPen'],
+            )
         else:
             self.traces.add(name)
             # initial setup of curve plot
+
             self.graph = pg.PlotCurveItem(
-                x=data_x, y=data_y, pen='w', shadowPen='r',
+                x=data_x, y=data_y, pen=self.a['pen'], shadowPen=self.a['shadowPen'],
             )
+
         self.audio_plot.addItem(self.graph)
+
+
 
     def update(self):
         """update plot by number which user chose"""
@@ -141,11 +155,28 @@ class AudioStream:
         sp_data[sp_data <= 0.001] = 0
         return sp_data
 
+
+
     @staticmethod
     def start():
         """start application"""
         if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
-            QtGui.QApplication.instance().exec_()
+                QtGui.QApplication.instance().exec_()
+
+    @staticmethod
+    def changeColor(key):
+        """change color in curve graph after start"""
+        try:
+            if (key == Key.right):
+                AUDIO_APP.a['shadowPen'] = 'b'
+            elif (key == Key.up):
+                AUDIO_APP.a['shadowPen'] = 'g'
+            elif (key == Key.down):
+                AUDIO_APP.a['shadowPen'] = 'w'
+            elif (key == Key.left):
+                AUDIO_APP.a['shadowPen'] = 'r'
+        except:
+            pass
 
     def animation(self):
         """call self.start and self.update for continuous
@@ -157,6 +188,8 @@ class AudioStream:
         self.start()
 
 
+
+
 if __name__ == "__main__":
     print("Choose and type number.")
     print("-" * 20)
@@ -164,6 +197,13 @@ if __name__ == "__main__":
     print("2: Scatter Graph")
     print("3: Curve Graph")
     print("-" * 20)
+
     number = int(input("Graph Type:"))
     AUDIO_APP = AudioStream(number)
-    AUDIO_APP.animation()
+
+    #detect keyboard press
+    with Listener(on_press=AUDIO_APP.changeColor) as listener:
+        AUDIO_APP.animation()
+    listener.join()
+
+
